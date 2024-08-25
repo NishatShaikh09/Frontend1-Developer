@@ -1,0 +1,252 @@
+Step 1: Project Setup
+
+1)Initialize the Project
+i)Create a new Next.js project:
+npx create-next-app@latest spreadsheet-app
+cd spreadsheet-app
+ii)Install necessary dependencies:
+npm install zustand tailwindcss @tailwindcss/forms
+iii)Initialize Tailwind CSS:
+npx tailwindcss init -p
+
+2)Configure Tailwind CSS
+i)Update the tailwind.config.js file to include the necessary paths
+module.exports = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx}',
+    './components/**/*.{js,ts,jsx,tsx}',
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [require('@tailwindcss/forms')],
+}
+
+3)Setup Zustand for State Management
+i)Create a store.js file in the lib directory:
+import create from 'zustand'
+
+const useStore = create((set) => ({
+  cells: Array(1000).fill('').map(() => ({ value: '', format: {} })),
+  updateCell: (index, data) => set((state) => {
+    const cells = [...state.cells];
+    cells[index] = { ...cells[index], ...data };
+    return { cells };
+  }),
+  undoStack: [],
+  redoStack: [],
+  pushToUndoStack: (data) => set((state) => ({ undoStack: [...state.undoStack, data] })),
+  pushToRedoStack: (data) => set((state) => ({ redoStack: [...state.redoStack, data] })),
+  undo: () => set((state) => {
+    if (state.undoStack.length > 0) {
+      const lastState = state.undoStack.pop();
+      return { cells: lastState, redoStack: [...state.redoStack, state.cells] };
+    }
+  }),
+  redo: () => set((state) => {
+    if (state.redoStack.length > 0) {
+      const lastRedo = state.redoStack.pop();
+      return { cells: lastRedo, undoStack: [...state.undoStack, state.cells] };
+    }
+  }),
+}));
+
+export default useStore;
+
+Step 2: Core Functionality
+1)Grid Rendering
+i)Create a Grid component in the components directory.
+import useStore from '../lib/store';
+
+const Grid = () => {
+  const cells = useStore((state) => state.cells);
+
+  return (
+    <div className="grid grid-cols-10 gap-1">
+      {cells.map((cell, index) => (
+        <Cell key={index} index={index} />
+      ))}
+    </div>
+  );
+};
+
+export default Grid;
+2)Cell Editing.
+i)Create a Cell component.
+import useStore from '../lib/store';
+
+const Cell = ({ index }) => {
+  const { cells, updateCell, pushToUndoStack } = useStore();
+  const cell = cells[index];
+
+  const handleChange = (e) => {
+    pushToUndoStack([...cells]);
+    updateCell(index, { value: e.target.value });
+  };
+
+  return (
+    <input
+      className="border p-2 w-full"
+      value={cell.value}
+      onChange={handleChange}
+    />
+  );
+};
+
+export default Cell;
+3)Cell Styling.
+i)Enhance the Cell component to include basic formatting options like text alignment and font size:
+const Cell = ({ index }) => {
+  const { cells, updateCell, pushToUndoStack } = useStore();
+  const cell = cells[index];
+
+  const handleChange = (e) => {
+    pushToUndoStack([...cells]);
+    updateCell(index, { value: e.target.value });
+  };
+
+  const handleAlignment = (alignment) => {
+    pushToUndoStack([...cells]);
+    updateCell(index, { format: { ...cell.format, alignment } });
+  };
+
+  const handleFontSize = (size) => {
+    pushToUndoStack([...cells]);
+    updateCell(index, { format: { ...cell.format, fontSize: size } });
+  };
+
+  return (
+    <div>
+      <input
+        className={`border p-2 w-full ${cell.format.alignment || ''} ${cell.format.fontSize || 'text-base'}`}
+        value={cell.value}
+        onChange={handleChange}
+      />
+      <div>
+        <button onClick={() => handleAlignment('text-left')}>Left</button>
+        <button onClick={() => handleAlignment('text-center')}>Center</button>
+        <button onClick={() => handleAlignment('text-right')}>Right</button>
+        <button onClick={() => handleFontSize('text-sm')}>Small</button>
+        <button onClick={() => handleFontSize('text-lg')}>Large</button>
+      </div>
+    </div>
+  );
+};
+
+Step 3: Advanced Features.
+1)Data Validation:
+i)Add a validation function in store.js and integrate it within the handleChange method:
+const validateInput = (value) => {
+  return /^\d*$/.test(value);
+};
+
+const handleChange = (e) => {
+  if (validateInput(e.target.value)) {
+    pushToUndoStack([...cells]);
+    updateCell(index, { value: e.target.value });
+  }
+};
+
+
+2)Search and Filter:
+i)Add search functionality by filtering cells::
+const Search = () => {
+  const [query, setQuery] = useState('');
+  const { cells, searchResults, updateSearchResults } = useStore();
+
+  const handleSearch = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+    const results = cells.filter((cell) => cell.value.includes(value));
+    updateSearchResults(results);
+  };
+
+  return (
+    <input
+      className="border p-2 w-full"
+      value={query}
+      onChange={handleSearch}
+      placeholder="Search..."
+    />
+  );
+};
+
+
+3)Pagination:
+i)Implement infinite scrolling by only rendering a portion of the grid at a time:
+const Grid = () => {
+  const [visibleCells, setVisibleCells] = useState(100);
+  const cells = useStore((state) => state.cells);
+
+  const loadMore = () => {
+    setVisibleCells((prev) => prev + 100);
+  };
+
+  return (
+    <div onScroll={loadMore} className="grid grid-cols-10 gap-1 overflow-auto">
+      {cells.slice(0, visibleCells).map((cell, index) => (
+        <Cell key={index} index={index} />
+      ))}
+    </div>
+  );
+};
+
+
+4)Undo/Redo:
+i)Use the existing undo and redo functions in your components to provide undo/redo functionality:
+const Controls = () => {
+  const { undo, redo } = useStore();
+
+  return (
+    <div>
+      <button onClick={undo}>Undo</button>
+      <button onClick={redo}>Redo</button>
+    </div>
+  );
+};
+
+Step 4: Testing
+1)Unit Tests:
+i)Write unit tests using a framework like Jest or React Testing Library to ensure the reliability of the key features:
+npm install --save-dev jest @testing-library/react
+ii)Example test for cell editing:
+import { render, fireEvent } from '@testing-library/react';
+import Cell from '../components/Cell';
+
+test('edits cell value', () => {
+  const { getByRole } = render(<Cell index={0} />);
+  const input = getByRole('textbox');
+  fireEvent.change(input, { target: { value: '123' } });
+  expect(input.value).toBe('123');
+});
+
+Step 5: Deployment and Documentation
+1)Deploy to Vercel:
+i)Deploy the application to Vercel for a live demo:
+vercel
+
+2)Write Documentation
+i)Create a README.md file with setup instructions, usage examples, and any additional notes.
+
+Step 6: Review and Submission
+i)Ensure Functionality: Double-check that all the core and advanced features are working correctly.
+ii)User Experience: Test the application on different devices and screen sizes.
+iii)Performance: Optimize performance as needed, especially with large datasets.
+iv)Code Quality: Refactor the code for readability and maintainability.
+
+Step 7: Optional Enhancements
+i)Custom Themes: Allow users to switch between light and dark themes.
+ii)Advanced Formatting: Implement additional formatting options like background colors, bold/italic text, etc.
+iii)Export/Import: Add functionality to export the grid data to CSV or JSON and import it back.
+
+
+
+
+
+
+
+
+
+
+
+
